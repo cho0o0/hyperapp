@@ -1,5 +1,5 @@
-export function h(name, attributes) {
-  var rest = []
+export function h(name, attributes) { // h と app のみexportしている。Vueと同じようにhはVirtual DOM作成時使用される
+  var rest = [] // restには残ったh関数が入る
   var children = []
   var length = arguments.length
 
@@ -7,7 +7,7 @@ export function h(name, attributes) {
 
   while (rest.length) {
     var node = rest.pop()
-    if (node && node.pop) {
+    if (node && node.pop) { // nodeは配列なら
       for (length = node.length; length--; ) {
         rest.push(node[length])
       }
@@ -16,7 +16,7 @@ export function h(name, attributes) {
     }
   }
 
-  return typeof name === "function"
+  return typeof name === "function" // nodeを返す
     ? name(attributes || {}, children)
     : {
         nodeName: name,
@@ -27,54 +27,54 @@ export function h(name, attributes) {
 }
 
 export function app(state, actions, view, container) {
-  var map = [].map
-  var rootElement = (container && container.children[0]) || null
-  var oldNode = rootElement && recycleElement(rootElement)
-  var lifecycle = []
-  var skipRender
-  var isRecycling = true
-  var globalState = clone(state)
+  var map = [].map // childNodesの走査でcallを使用するためにわざわざmap functionを出している
+  var rootElement = (container && container.children[0]) || null // containerの一番目の子要素を出している
+  var oldNode = rootElement && recycleElement(rootElement) // HTML DOM -> Virtual DOM
+  var lifecycle = [] // https://github.com/hyperapp/hyperapp#lifecycle-events
+  var skipRender // フラグ変数（レンダリングを行うかどうか）
+  var isRecycling = true // // 既存DOMを使用させる（主にSSRページ対応）ためのフラグになる(https://github.com/hyperapp/hyperapp#mounting)
+  var globalState = clone(state) // immutableを実現する為に、objectのクローンが散見される
   var wiredActions = wireStateToActions([], globalState, clone(actions))
 
   scheduleRender()
 
-  return wiredActions
-
-  function recycleElement(element) {
+  return wiredActions // appの戻り値はstateが挿入されたactions
+  
+  function recycleElement(element) { // DOM要素をVirtual DOMへ変換する
     return {
       nodeName: element.nodeName.toLowerCase(),
       attributes: {},
       children: map.call(element.childNodes, function(element) {
         return element.nodeType === 3 // Node.TEXT_NODE
           ? element.nodeValue
-          : recycleElement(element)
+          : recycleElement(element) // 子要素も再帰で変換する
       })
     }
   }
 
-  function resolveNode(node) {
+  function resolveNode(node) { // JSXを得るための関数
     return typeof node === "function"
-      ? resolveNode(node(globalState, wiredActions))
-      : node
+      ? resolveNode(node(globalState, wiredActions)) // view関数を実行し、Nodeをゲットする
+      : node // Nodeならそのまま
   }
 
   function render() {
-    var node = resolveNode(view)
+    var node = resolveNode(view) // viewはstateとactionsをとり、Node(JSXならbabelに変換してもらったNode)を返す関数
 
     if (container) {
-      rootElement = patch(container, rootElement, oldNode, (oldNode = node))
+      rootElement = patch(container, rootElement, oldNode, (oldNode = node)) // patch実行後、nodeをoldNodeに代入する
     }
 
-    skipRender = isRecycling = false
+    skipRender = isRecycling = false // HTML DOM生成できたら、これからのインタラクションは本ライブラリでハンドリングさせるために、skipRenderもisRecyclingもFalseにする
 
-    while (lifecycle.length) lifecycle.pop()()
+    while (lifecycle.length) lifecycle.pop()() // oncreateかonupdateはここで実行される
   }
 
-  function scheduleRender() {
+  function scheduleRender() { // skipRenderはFalseならTrueに変換し、renderをスケジューリングする。TrueならRenderが行われない
     if (!skipRender && (skipRender = true)) setTimeout(render)
   }
 
-  function clone(target, source) {
+  function clone(target, source) { // immutableを担保するutils関数
     var out = {}
 
     for (var i in target) out[i] = target[i]
@@ -83,7 +83,7 @@ export function app(state, actions, view, container) {
     return out
   }
 
-  function set(path, value, source) {
+  function set(path, value, source) { // Nest Stateに対応するために使用されたヘルパー関数
     var target = {}
     if (path.length) {
       target[path[0]] =
@@ -93,24 +93,24 @@ export function app(state, actions, view, container) {
     return value
   }
 
-  function get(path, source) {
+  function get(path, source) { // Nest Stateに対応するために、pathを引数として取るstateを取得する関数になった
     var i = 0
     while (i < path.length) source = source[path[i++]]
     return source
   }
 
-  function wireStateToActions(path, state, actions) {
+  function wireStateToActions(path, state, actions) { // 主流のフロントエンドフレームワークと同じく、CRUDではなく、EventベースのState変更になる
     for (var key in actions) {
       typeof actions[key] === "function"
-        ? (function(key, action) {
+        ? (function(key, action) { // 即時実行関数
             actions[key] = function(data) {
-              var result = action(data)
+              var result = action(data) // 例：state => ({ count: state.count + data } になる（Closureの活用）
 
               if (typeof result === "function") {
-                result = result(get(path, globalState), actions)
+                result = result(get(path, globalState), actions) // value => (state, actions) => { setTimeout(actions.up, 1000, value) } のようにstateだけでなく、actionsも引き数として取れる。(https://github.com/hyperapp/hyperapp#asynchronous-actions)
               }
 
-              if (
+              if ( // Asynchronous Actionsのための処理
                 result &&
                 result !== (state = get(path, globalState)) &&
                 !result.then // !isPromise
@@ -122,8 +122,8 @@ export function app(state, actions, view, container) {
 
               return result
             }
-          })(key, actions[key])
-        : wireStateToActions(
+          })(key, actions[key]) // 例：(up, value => state => ({ count: state.count + value }))
+        : wireStateToActions( // ネストに対応するための分岐(https://github.com/hyperapp/hyperapp#nested-actions)
             path.concat(key),
             (state[key] = clone(state[key])),
             (actions[key] = clone(actions[key]))
@@ -133,17 +133,17 @@ export function app(state, actions, view, container) {
     return actions
   }
 
-  function getKey(node) {
+  function getKey(node) { // Virtual DOMのNodeのキーを取得するヘルパー関数
     return node ? node.key : null
   }
 
-  function eventListener(event) {
+  function eventListener(event) { // utils(イベント実行用)
     return event.currentTarget.events[event.type](event)
   }
 
-  function updateAttribute(element, name, value, oldValue, isSvg) {
+  function updateAttribute(element, name, value, oldValue, isSvg) { // 例：(dom#div, onClick, el => {el.innerHTML = ""}, null, false)
     if (name === "key") {
-    } else if (name === "style") {
+    } else if (name === "style") { // styleの設定
       for (var i in clone(oldValue, value)) {
         var style = value == null || value[i] == null ? "" : value[i]
         if (i[0] === "-") {
@@ -153,35 +153,35 @@ export function app(state, actions, view, container) {
         }
       }
     } else {
-      if (name[0] === "o" && name[1] === "n") {
+      if (name[0] === "o" && name[1] === "n") { // eventListenerをバンドさせる(onClickだとclickイベントをバンドするとか)
         if (!element.events) {
           element.events = {}
         }
         element.events[(name = name.slice(2))] = value
         if (value) {
-          if (!oldValue) {
+          if (!oldValue) { // すでにバンドされているケースの再度バンディングを防ぐ
             element.addEventListener(name, eventListener)
           }
         } else {
-          element.removeEventListener(name, eventListener)
+          element.removeEventListener(name, eventListener) // イベントを外す
         }
-      } else if (name in element && name !== "list" && !isSvg) {
+      } else if (name in element && name !== "list" && !isSvg) { // Attributeが要素にあれば 例："id" in document.querySelector("#Syntax") === true
         element[name] = value == null ? "" : value
-      } else if (value != null && value !== false) {
+      } else if (value != null && value !== false) { // 上記のケースじゃなければ直接に設定する処理
         element.setAttribute(name, value)
       }
 
-      if (value == null || value === false) {
+      if (value == null || value === false) { // 外す処理
         element.removeAttribute(name)
       }
     }
   }
 
-  function createElement(node, isSvg) {
+  function createElement(node, isSvg) { // Virtual DOMのnodeを使ってDOM要素（element）を作成する(Virtual DOM -> DOM)
     var element =
       typeof node === "string" || typeof node === "number"
-        ? document.createTextNode(node)
-        : (isSvg = isSvg || node.nodeName === "svg")
+        ? document.createTextNode(node) // stringか数字の場合はtextNode
+        : (isSvg = isSvg || node.nodeName === "svg") //SVGのケースに対応する
           ? document.createElementNS(
               "http://www.w3.org/2000/svg",
               node.nodeName
@@ -190,13 +190,13 @@ export function app(state, actions, view, container) {
 
     var attributes = node.attributes
     if (attributes) {
-      if (attributes.oncreate) {
+      if (attributes.oncreate) { // oncreate例： {element => element.focus()}
         lifecycle.push(function() {
-          attributes.oncreate(element)
+          attributes.oncreate(element) // https://github.com/hyperapp/hyperapp#oncreate
         })
       }
 
-      for (var i = 0; i < node.children.length; i++) {
+      for (var i = 0; i < node.children.length; i++) { // 子要素は再帰でDOMへAppendする
         element.appendChild(
           createElement(
             (node.children[i] = resolveNode(node.children[i])),
@@ -205,18 +205,18 @@ export function app(state, actions, view, container) {
         )
       }
 
-      for (var name in attributes) {
-        updateAttribute(element, name, attributes[name], null, isSvg)
+      for (var name in attributes) { // ユーザが設定した全てのAttributeを処理する（https://github.com/hyperapp/hyperapp#supported-attributes）
+        updateAttribute(element, name, attributes[name], null, isSvg) // Lifecycleイベントはここの対象に含まれていない
       }
     }
 
     return element
   }
 
-  function updateElement(element, oldAttributes, attributes, isSvg) {
+  function updateElement(element, oldAttributes, attributes, isSvg) { // DOM要素の更新関数
     for (var name in clone(oldAttributes, attributes)) {
       if (
-        attributes[name] !==
+        attributes[name] !== // Attributeが変わったら更新させる
         (name === "value" || name === "checked"
           ? element[name]
           : oldAttributes[name])
@@ -231,7 +231,7 @@ export function app(state, actions, view, container) {
       }
     }
 
-    var cb = isRecycling ? attributes.oncreate : attributes.onupdate
+    var cb = isRecycling ? attributes.oncreate : attributes.onupdate // oncreateかonupdateをlifecycle配列に入れてあとで実行させる
     if (cb) {
       lifecycle.push(function() {
         cb(element, oldAttributes)
@@ -239,7 +239,7 @@ export function app(state, actions, view, container) {
     }
   }
 
-  function removeChildren(element, node) {
+  function removeChildren(element, node) { // ondestoryがNodeにあれば実行させるために使用される関数
     var attributes = node.attributes
     if (attributes) {
       for (var i = 0; i < node.children.length; i++) {
@@ -247,37 +247,37 @@ export function app(state, actions, view, container) {
       }
 
       if (attributes.ondestroy) {
-        attributes.ondestroy(element)
+        attributes.ondestroy(element) // https://github.com/hyperapp/hyperapp#ondestroy
       }
     }
     return element
   }
 
-  function removeElement(parent, element, node) {
+  function removeElement(parent, element, node) { // HTML DOMの要素から該当要素を削除する関数
     function done() {
       parent.removeChild(removeChildren(element, node))
     }
 
-    var cb = node.attributes && node.attributes.onremove
+    var cb = node.attributes && node.attributes.onremove // onremove例：(element, done) => fadeout(element).then(done)
     if (cb) {
-      cb(element, done)
+      cb(element, done)  // Lifecycleのonremoveがあればコールバック(cb)として実行される(https://github.com/hyperapp/hyperapp#onremove)
     } else {
       done()
     }
   }
 
-  function patch(parent, element, oldNode, node, isSvg) {
+  function patch(parent, element, oldNode, node, isSvg) { // Nodeの差分を観察し、HTML DOM(element)を更新する・Lifecycleのイベントも実行させる関数。本ライブラリのミソ
     if (node === oldNode) {
     } else if (oldNode == null || oldNode.nodeName !== node.nodeName) {
       var newElement = createElement(node, isSvg)
       parent.insertBefore(newElement, element)
 
-      if (oldNode != null) {
+      if (oldNode != null) { // 旧Nodeを削除する処理
         removeElement(parent, element, oldNode)
       }
 
       element = newElement
-    } else if (oldNode.nodeName == null) {
+    } else if (oldNode.nodeName == null) { // 配列対応？（要確認）
       element.nodeValue = node
     } else {
       updateElement(
@@ -287,13 +287,13 @@ export function app(state, actions, view, container) {
         (isSvg = isSvg || node.nodeName === "svg")
       )
 
-      var oldKeyed = {}
+      var oldKeyed = {} // NodeのキーがKeyになり、[element(HTML DOM), node(Virtual DOM)]のペアがValueになるMap形式オブジェクト
       var newKeyed = {}
       var oldElements = []
       var oldChildren = oldNode.children
       var children = node.children
 
-      for (var i = 0; i < oldChildren.length; i++) {
+      for (var i = 0; i < oldChildren.length; i++) { // oldKeyed(旧Elementー旧Node対応表の作成)
         oldElements[i] = element.childNodes[i]
 
         var oldKey = getKey(oldChildren[i])
@@ -301,7 +301,7 @@ export function app(state, actions, view, container) {
           oldKeyed[oldKey] = [oldElements[i], oldChildren[i]]
         }
       }
-
+      // ここから以下はキーを使って、新HTML DOM Elementを生成する処理
       var i = 0
       var k = 0
 
@@ -356,6 +356,6 @@ export function app(state, actions, view, container) {
         }
       }
     }
-    return element
+    return element // 新要素を返す
   }
 }
