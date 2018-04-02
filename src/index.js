@@ -17,7 +17,7 @@ export function h(name, attributes) { // h と app のみexportしている。Vu
   }
 
   return typeof name === "function" // nodeを返す
-    ? name(attributes || {}, children)
+    ? name(attributes || {}, children) // button({ onclick: actions.down }, "-")が書ける
     : {
         nodeName: name,
         attributes: attributes || {},
