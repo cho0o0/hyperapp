@@ -146,7 +146,7 @@ export function app(state, actions, view, container) {
     } else if (name === "style") { // styleの設定
       for (var i in clone(oldValue, value)) {
         var style = value == null || value[i] == null ? "" : value[i]
-        if (i[0] === "-") {
+        if (i[0] === "-") { // -moz- に対応する為に
           element[name].setProperty(i, style)
         } else {
           element[name][i] = style
